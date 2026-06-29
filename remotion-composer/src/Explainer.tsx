@@ -536,6 +536,7 @@ const BackgroundVideoLayer: React.FC<{
       <OffthreadVideo
         src={resolveAsset(src)}
         startFrom={Math.round(startFrom * fps)}
+        loop
         style={{
           width: "100%",
           height: "100%",
