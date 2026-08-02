@@ -86,6 +86,11 @@ class PexelsVideo(BaseTool):
                 "enum": ["hd", "sd"],
                 "default": "hd",
             },
+            "locale": {
+                "type": "string",
+                "description": "Search locale (e.g. zh-CN for Chinese). Default zh-CN for better Chinese-scene matching.",
+                "default": "zh-CN",
+            },
             "output_path": {"type": "string"},
         },
     }
@@ -128,13 +133,24 @@ class PexelsVideo(BaseTool):
             params["orientation"] = inputs["orientation"]
         if inputs.get("size"):
             params["size"] = inputs["size"]
+        # 🔴 2026-08-02：默认 zh-CN locale，中文关键词能显著改善中国场景匹配
+        # （实测"夜晚 手机"→ 深夜看手机特写；英文词常搜出欧美/军人等无关画面）
+        params["locale"] = inputs.get("locale", "zh-CN")
 
         try:
+            # 🔴 必须走 Clash 代理 + 浏览器 UA：HK 直连 Pexels 慢/403，
+            #    python-requests 默认 UA 被 Cloudflare error 1010 拦截（2026-08-02 实测）
+            _proxy = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
+            _ua = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             search_response = requests.get(
                 "https://api.pexels.com/videos/search",
-                headers={"Authorization": api_key},
+                headers={
+                    "Authorization": api_key,
+                    "User-Agent": _ua["User-Agent"],
+                },
                 params=params,
                 timeout=30,
+                proxies=_proxy,
             )
             search_response.raise_for_status()
             data = search_response.json()
@@ -179,7 +195,12 @@ class PexelsVideo(BaseTool):
                 return ToolResult(success=False, error="No downloadable video file found.")
 
             video_url = selected_file["link"]
-            video_response = requests.get(video_url, timeout=120)
+            video_response = requests.get(
+                video_url,
+                timeout=120,
+                proxies=_proxy,
+                headers=_ua,
+            )
             video_response.raise_for_status()
 
             output_path = Path(inputs.get("output_path", f"pexels_video_{video['id']}.mp4"))
