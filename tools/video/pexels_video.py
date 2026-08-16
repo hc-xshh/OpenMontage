@@ -91,6 +91,11 @@ class PexelsVideo(BaseTool):
                 "description": "Search locale (e.g. zh-CN for Chinese). Default zh-CN for better Chinese-scene matching.",
                 "default": "zh-CN",
             },
+            "exclude_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Pexels video IDs to exclude (跨天素材去重：传入历史已用 id，搜索时跳过这些视频)",
+            },
             "output_path": {"type": "string"},
         },
     }
@@ -136,6 +141,8 @@ class PexelsVideo(BaseTool):
         # 🔴 2026-08-02：默认 zh-CN locale，中文关键词能显著改善中国场景匹配
         # （实测"夜晚 手机"→ 深夜看手机特写；英文词常搜出欧美/军人等无关画面）
         params["locale"] = inputs.get("locale", "zh-CN")
+        # 🔴 2026-08-16：跨天素材去重——排除历史已用 id
+        exclude_ids = set(inputs.get("exclude_ids") or [])
 
         try:
             # 🔴 必须走 Clash 代理 + 浏览器 UA：HK 直连 Pexels 慢/403，
@@ -178,7 +185,35 @@ class PexelsVideo(BaseTool):
                     data={"total_results": data.get("total_results", 0)},
                 )
 
-            video = videos[0]
+            # 🔴 2026-08-16：跨天去重——跳过已用 id，翻页找未用视频
+            video = None
+            if exclude_ids:
+                videos = [v for v in videos if v.get("id") not in exclude_ids]
+                # 翻页最多 5 次，避免 API 压力
+                for _page in range(2, 6):
+                    if videos:
+                        break
+                    page_params = dict(params)
+                    page_params["page"] = _page
+                    page_resp = requests.get(
+                        "https://api.pexels.com/videos/search",
+                        headers={"Authorization": api_key, "User-Agent": _ua["User-Agent"]},
+                        params=page_params,
+                        timeout=30,
+                        proxies=_proxy,
+                    )
+                    page_resp.raise_for_status()
+                    page_data = page_resp.json()
+                    videos = [v for v in page_data.get("videos", []) if v.get("id") not in exclude_ids]
+                    data = page_data
+            if videos:
+                video = videos[0]
+            else:
+                return ToolResult(
+                    success=False,
+                    error=f"No unused videos found for query: {query} (excluded {len(exclude_ids)} ids)",
+                    data={"total_results": data.get("total_results", 0)},
+                )
             preferred_quality = inputs.get("preferred_quality", "hd")
 
             # Pick the best matching video file
