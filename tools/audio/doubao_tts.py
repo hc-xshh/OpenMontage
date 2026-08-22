@@ -233,7 +233,7 @@ class DoubaoTTS(BaseTool):
         )
         body = self._submit_body(inputs, voice_id=voice_id, request_id=req_id)
 
-        submit_response = requests.post(self.SUBMIT_URL, headers=headers, json=body, timeout=(10, 60))
+        submit_response = requests.post(self.SUBMIT_URL, headers=headers, json=body, timeout=(60, 90))
         submit_data = self._json_or_raise(submit_response)
         self._raise_for_doubao_error(submit_response.status_code, submit_data)
 
@@ -255,7 +255,7 @@ class DoubaoTTS(BaseTool):
         if not audio_url:
             raise RuntimeError("Doubao task completed but did not return data.audio_url")
 
-        audio_response = requests.get(audio_url, timeout=(10, 120))
+        audio_response = requests.get(audio_url, timeout=(60, 180))
         audio_response.raise_for_status()
         output_path.write_bytes(audio_response.content)
         metadata_path.write_text(json.dumps(query_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -350,7 +350,7 @@ class DoubaoTTS(BaseTool):
                 request_id=str(uuid.uuid4()),
                 return_usage=return_usage,
             )
-            response = requests_module.post(self.QUERY_URL, headers=headers, json={"task_id": task_id}, timeout=(10, 60))
+            response = requests_module.post(self.QUERY_URL, headers=headers, json={"task_id": task_id}, timeout=(60, 90))
             query_data = self._json_or_raise(response)
             self._raise_for_doubao_error(response.status_code, query_data)
             status = query_data.get("data", {}).get("task_status")
